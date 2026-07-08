@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>作业帮 · AI 智能批改</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✍️</text></svg>" />
+</head>
+<body>
+  <div class="app">
+    <!-- 侧边导航 -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">✍</div>
+        <div>
+          <div class="brand-name">作业帮</div>
+          <div class="brand-sub">AI 智能批改</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-view="classes">
+          <span class="nav-ico">👥</span>班级管理
+        </button>
+        <button class="nav-item" data-view="assignments">
+          <span class="nav-ico">📋</span>作业与答案
+        </button>
+        <button class="nav-item" data-view="grading">
+          <span class="nav-ico">🖊️</span>智能批改
+        </button>
+        <button class="nav-item" data-view="analysis">
+          <span class="nav-ico">📊</span>成绩分析
+        </button>
+      </nav>
+      <div class="sidebar-foot">
+        <div id="aiStatus" class="ai-status">检测中…</div>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main">
+      <!-- 班级管理 -->
+      <section id="view-classes" class="view active">
+        <header class="view-head">
+          <div>
+            <h1>班级管理</h1>
+            <p class="muted">先录入班级和学生名单，之后上传的作业会自动关联到学生</p>
+          </div>
+          <button class="btn primary" id="btnAddClass">＋ 新建班级</button>
+        </header>
+        <div id="classList" class="class-grid"></div>
+      </section>
+
+      <!-- 作业与答案 -->
+      <section id="view-assignments" class="view">
+        <header class="view-head">
+          <div>
+            <h1>作业与答案</h1>
+            <p class="muted">为每次作业录入标准答案与分值，AI 将据此批改</p>
+          </div>
+          <button class="btn primary" id="btnAddAsg">＋ 新建作业</button>
+        </header>
+        <div id="asgList" class="asg-list"></div>
+      </section>
+
+      <!-- 智能批改 -->
+      <section id="view-grading" class="view">
+        <header class="view-head">
+          <div>
+            <h1>智能批改</h1>
+            <p class="muted">上传作业照片 → AI 识别并对照标准答案 → 生成红笔批注与成绩</p>
+          </div>
+          <select id="gradeAsgSelect" class="select wide"></select>
+        </header>
+        <div id="gradeBody"></div>
+      </section>
+
+      <!-- 成绩分析 -->
+      <section id="view-analysis" class="view">
+        <header class="view-head">
+          <div>
+            <h1>成绩分析</h1>
+            <p class="muted">班级成绩单 · 学生成绩走势 · 逐题错误率</p>
+          </div>
+          <div class="tabbar" id="analysisTabs">
+            <button class="tab active" data-tab="sheet">成绩单</button>
+            <button class="tab" data-tab="student">学生分析</button>
+            <button class="tab" data-tab="question">试卷讲评</button>
+          </div>
+        </header>
+        <div id="analysisBody"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 批改详情（全屏） -->
+  <div id="reviewOverlay" class="overlay hidden">
+    <div class="review">
+      <header class="review-head">
+        <button class="btn ghost" id="btnCloseReview">← 返回</button>
+        <div class="review-title" id="reviewTitle"></div>
+        <div class="review-actions">
+          <button class="btn" id="btnExportPng">⬇ 导出批改图</button>
+          <button class="btn primary" id="btnSaveReview">保存修改</button>
+        </div>
+      </header>
+      <div class="review-body">
+        <div class="review-canvas-wrap" id="reviewCanvasWrap">
+          <div class="review-canvas" id="reviewCanvas">
+            <img id="reviewImg" alt="作业图片" draggable="false" />
+            <svg id="marksSvg"></svg>
+          </div>
+          <p class="hint">提示：红笔标记可直接拖动微调位置</p>
+        </div>
+        <aside class="review-panel" id="reviewPanel"></aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通用弹窗 -->
+  <div id="modal" class="overlay hidden">
+    <div class="modal" id="modalBox"></div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/vendor/chart.umd.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

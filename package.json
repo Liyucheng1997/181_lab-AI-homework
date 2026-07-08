@@ -1,0 +1,17 @@
+{
+  "name": "ai-homework-grader",
+  "version": "1.0.0",
+  "description": "AI 作业智能批改系统：图像识别 + 仿手写红笔批注 + 班级成绩管理与可视化",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "chart.js": "^4.4.1",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
