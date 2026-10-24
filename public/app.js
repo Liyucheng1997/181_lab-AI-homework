@@ -43,6 +43,27 @@
   function findStu(clsId, stuId) { return findCls(clsId)?.students.find((s) => s.id === stuId); }
   function subOf(asgId, stuId) { return DB.submissions.find((s) => s.assignmentId === asgId && s.studentId === stuId); }
   function asgTotal(asg) { return asg.questions.reduce((s, q) => s + Number(q.points || 0), 0); }
+  // 读取 CSS 设计变量（图表配色跟随浅色 / 深色主题）
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function alpha(hex, a) {
+    const m = hex.replace("#", "");
+    if (m.length !== 6) return hex;
+    return `rgba(${parseInt(m.slice(0, 2), 16)},${parseInt(m.slice(2, 4), 16)},${parseInt(m.slice(4, 6), 16)},${a})`;
+  }
+
+  // 线性图标（lucide 风格，描边 1.75）
+  const ICON_PATHS = {
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/>',
+    pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    chart: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>'
+  };
+  function icon(name, size = 18) {
+    return `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name]}</svg>`;
+  }
+  function emptyHtml(iconName, text, extraStyle = "") {
+    return `<div class="empty" ${extraStyle ? `style="${extraStyle}"` : ""}><div class="big">${icon(iconName, 34)}</div>${text}</div>`;
+  }
 
   // 稳定的伪随机（同一标记每次渲染抖动一致，看起来像"写上去就固定了"）
   function seededRand(seedStr) {
@@ -76,7 +97,7 @@
   function renderClasses() {
     const wrap = $("#classList");
     if (!DB.classes.length) {
-      wrap.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="big">👥</div>还没有班级，点右上角「新建班级」开始</div>`;
+      wrap.innerHTML = emptyHtml("users", "还没有班级，点右上角「新建班级」开始", "grid-column:1/-1");
       return;
     }
     wrap.innerHTML = DB.classes
@@ -90,12 +111,12 @@
         return `<div class="class-card">
           <div class="class-card-head">
             <div><h3>${esc(c.name)}</h3><div class="class-meta">${c.students.length} 名学生</div></div>
-            <button class="btn ghost small danger" data-act="del-cls" data-cls="${c.id}">删除班级</button>
+            <button class="btn small danger" data-act="del-cls" data-cls="${c.id}">删除班级</button>
           </div>
           <div class="stu-chips">${chips || '<span class="muted">暂无学生</span>'}</div>
           <div class="card-actions">
             <button class="btn small" data-act="add-stu" data-cls="${c.id}">＋ 添加学生</button>
-            <button class="btn small" data-act="batch-stu" data-cls="${c.id}">📋 批量导入</button>
+            <button class="btn small" data-act="batch-stu" data-cls="${c.id}">批量导入</button>
           </div>
         </div>`;
       })
@@ -214,7 +235,7 @@
   function renderAssignments() {
     const wrap = $("#asgList");
     if (!DB.assignments.length) {
-      wrap.innerHTML = `<div class="empty"><div class="big">📋</div>还没有作业，点右上角「新建作业」录入标准答案</div>`;
+      wrap.innerHTML = emptyHtml("clipboard", "还没有作业，点右上角「新建作业」录入标准答案");
       return;
     }
     wrap.innerHTML = [...DB.assignments].reverse()
@@ -234,7 +255,7 @@
           </div>
           <button class="btn small" data-act="edit-asg" data-id="${a.id}">编辑答案</button>
           <button class="btn small primary" data-act="go-grade" data-id="${a.id}">去批改 →</button>
-          <button class="btn ghost small danger" data-act="del-asg" data-id="${a.id}">删除</button>
+          <button class="btn small danger" data-act="del-asg" data-id="${a.id}">删除</button>
         </div>`;
       })
       .join("");
@@ -277,7 +298,7 @@
     const wrap = $("#gradeBody");
     const asg = findAsg(asgId);
     if (!asg) {
-      wrap.innerHTML = `<div class="empty"><div class="big">🖊️</div>请先在上方选择一次作业</div>`;
+      wrap.innerHTML = emptyHtml("pen", "请先在右上方选择一次作业");
       return;
     }
     const cls = findCls(asg.classId);
@@ -289,16 +310,16 @@
       let stateHtml, scoreHtml = "", actions = "";
       if (!sub) {
         stateHtml = `<span class="stu-state state-none">未上传</span>`;
-        actions = `<button class="btn small primary" data-act="upload" data-stu="${stu.id}">📷 上传作业</button>`;
+        actions = `<button class="btn small primary" data-act="upload" data-stu="${stu.id}">上传作业</button>`;
       } else if (sub.status === "pending") {
         stateHtml = `<span class="stu-state state-pending">待批改</span>`;
-        actions = `<button class="btn small primary" data-act="grade" data-sub="${sub.id}">🤖 AI 批改</button>
-          <button class="btn small" data-act="grade-mock" data-sub="${sub.id}">🎲 模拟</button>
+        actions = `<button class="btn small primary" data-act="grade" data-sub="${sub.id}">AI 批改</button>
+          <button class="btn small" data-act="grade-mock" data-sub="${sub.id}">模拟</button>
           <button class="btn ghost small" data-act="upload" data-stu="${stu.id}">重传</button>`;
       } else {
         stateHtml = `<span class="stu-state state-graded">已批改</span>`;
         scoreHtml = `<div class="stu-score">${sub.totalScore}<small> / ${total} 分</small></div>`;
-        actions = `<button class="btn small primary" data-act="review" data-sub="${sub.id}">🔍 查看批改</button>
+        actions = `<button class="btn small primary" data-act="review" data-sub="${sub.id}">查看批改</button>
           <button class="btn ghost small" data-act="grade" data-sub="${sub.id}">重新批改</button>
           <button class="btn ghost small" data-act="upload" data-stu="${stu.id}">重传</button>`;
       }
@@ -313,8 +334,8 @@
       <div class="grade-toolbar">
         <span class="muted">共 ${cls.students.length} 人 · 待批改 ${pending} 份</span>
         <span style="flex:1"></span>
-        <button class="btn" id="btnGradeAllMock" ${pending ? "" : "disabled"}>🎲 全部模拟批改</button>
-        <button class="btn primary" id="btnGradeAll" ${pending ? "" : "disabled"}>🤖 AI 批改全部待批 (${pending})</button>
+        <button class="btn" id="btnGradeAllMock" ${pending ? "" : "disabled"}>全部模拟批改</button>
+        <button class="btn primary" id="btnGradeAll" ${pending ? "" : "disabled"}>AI 批改全部待批（${pending}）</button>
       </div>
       <div class="stu-grid">${cards}</div>
       <input type="file" id="fileInput" accept="image/*" style="display:none" />`;
@@ -327,17 +348,19 @@
     const cls = findCls(asg.classId);
     const pendings = cls.students.map((s) => subOf(asg.id, s.id)).filter((s) => s?.status === "pending");
     if (!pendings.length) return;
-    if (!mock && !HEALTH.hasApiKey) return toast("未配置 ANTHROPIC_API_KEY，请先用模拟批改体验", true);
-    let done = 0;
+    if (!mock && !HEALTH.hasApiKey) return openSettings("请先填写 API Key 才能使用 AI 批改");
+    let done = 0, lastErr = "";
     toast(`开始批改，共 ${pendings.length} 份…`);
     for (const sub of pendings) {
+      $(`#stucard-${sub.studentId}`)?.classList.add("busy");
       try {
         await api(`/api/submissions/${sub.id}/grade`, { method: "POST", body: { mock } });
         done++;
-      } catch (err) { console.error(err); }
+      } catch (err) { console.error(err); lastErr = err.message; }
       await reload(); renderGrading();
     }
-    toast(`批改完成：${done}/${pendings.length} 份`);
+    if (lastErr && !done) toast(lastErr, true);
+    else toast(`批改完成：${done}/${pendings.length} 份${lastErr ? "（部分失败：" + lastErr + "）" : ""}`, Boolean(lastErr));
   }
 
   $("#gradeAsgSelect").addEventListener("change", renderGrading);
@@ -367,10 +390,10 @@
       fi.click();
     } else if (act === "grade" || act === "grade-mock") {
       const mock = act === "grade-mock";
-      if (!mock && !HEALTH.hasApiKey) return toast("未配置 ANTHROPIC_API_KEY，可先点「模拟」体验", true);
+      if (!mock && !HEALTH.hasApiKey) return openSettings("请先填写 API Key 才能使用 AI 批改");
       btn.disabled = true;
       const label = btn.textContent;
-      btn.innerHTML = `<span class="grading-anim">${mock ? "🎲 生成中…" : "🤖 AI 批改中…"}</span>`;
+      btn.innerHTML = `<span class="spinner sm"></span>${mock ? "生成中…" : "AI 批改中…"}`;
       try {
         const sub = await api(`/api/submissions/${btn.dataset.sub}/grade`, { method: "POST", body: { mock } });
         await reload(); renderGrading();
@@ -610,7 +633,7 @@
           <span class="q-no">第${esc(r.no)}题</span><span class="q-pts">${r.points}分</span>
           <div class="verdict-group">${vBtns}</div>
         </div>
-        <div class="q-detail">标准答案：<b>${esc(r.answer)}</b><br/>识别答案：${esc(r.studentAnswer) || '<i style="color:var(--ink-3)">未识别</i>'}</div>
+        <div class="q-detail">标准答案：<b>${esc(r.answer)}</b><br/>识别答案：${esc(r.studentAnswer) || '<i class="muted">未识别</i>'}</div>
         <div class="q-edit-row">
           <input class="input score-in" type="number" min="0" max="${r.points}" value="${r.score}" data-idx="${i}" data-f="score" title="得分" />
           <input class="input" placeholder="批注（写在图上）" value="${esc(r.comment)}" data-idx="${i}" data-f="comment" />
@@ -745,10 +768,15 @@
     destroyCharts();
     const wrap = $("#analysisBody");
     if (!DB.classes.length) {
-      wrap.innerHTML = `<div class="empty"><div class="big">📊</div>请先创建班级并完成批改</div>`;
+      wrap.innerHTML = emptyHtml("chart", "请先创建班级并完成批改");
       return;
     }
     if (!analysisState.clsId || !findCls(analysisState.clsId)) analysisState.clsId = DB.classes[0].id;
+    if (window.Chart) {
+      Chart.defaults.color = cssVar("--text-3");
+      Chart.defaults.borderColor = cssVar("--line");
+      Chart.defaults.font.family = cssVar("--font");
+    }
 
     if (analysisTab === "sheet") renderSheetTab(wrap);
     else if (analysisTab === "student") renderStudentTab(wrap);
@@ -785,13 +813,13 @@
       }).join("");
       table = `<div class="table-wrap"><table class="grid">
         <thead>${head}</thead><tbody>${rows}
-        <tr style="background:var(--bg)"><td><b>班级平均</b></td>${avgCells}<td></td></tr>
+        <tr class="avg-row"><td><b>班级平均</b></td>${avgCells}<td></td></tr>
         </tbody></table></div>`;
     }
     wrap.innerHTML = `
       <div class="filter-bar">${clsSelectHtml("shClsSel", analysisState.clsId)}
         <span style="flex:1"></span>
-        <button class="btn" id="btnCsv">⬇ 导出 CSV</button>
+        <button class="btn" id="btnCsv">导出 CSV</button>
       </div>
       <div class="panel"><h3>${esc(cls.name)} · 成绩单</h3>${table}</div>`;
     $("#shClsSel").addEventListener("change", (e) => { analysisState.clsId = e.target.value; renderAnalysis(); });
@@ -835,10 +863,10 @@
         const total = asgTotal(asg);
         const rate = total ? ((sub.totalScore / total) * 100).toFixed(1) : "0";
         const dots = sub.results.map((r) => {
-          const color = r.verdict === "correct" ? "var(--green)" : r.verdict === "partial" ? "var(--amber)" : "var(--red)";
+          const color = r.verdict === "correct" ? "var(--success)" : r.verdict === "partial" ? "var(--warning)" : "var(--danger)";
           return `<span class="dot" style="background:${color}" title="第${esc(r.no)}题：${VERDICT_META[r.verdict]?.label || ""} ${r.score}/${r.points}分${r.comment ? " · " + esc(r.comment) : ""}"></span>`;
         }).join("");
-        const wrongs = sub.results.filter((r) => r.verdict !== "correct").map((r) => `第${r.no}题`).join("、") || "全对 🎉";
+        const wrongs = sub.results.filter((r) => r.verdict !== "correct").map((r) => `第${r.no}题`).join("、") || "全对";
         return `<tr>
           <td>${esc(asg.name)}<br/><span class="muted">${asg.date}</span></td>
           <td class="num"><span class="cell-link" data-sub="${sub.id}">${sub.totalScore} / ${total}</span></td>
@@ -852,9 +880,9 @@
         <div class="panel"><h3>逐次明细</h3><div class="table-wrap"><table class="grid">
           <thead><tr><th>作业</th><th>得分</th><th>得分率</th><th>逐题（悬停查看）</th><th>失分题</th></tr></thead>
           <tbody>${detailRows}</tbody></table></div>
-          <div class="legend-note"><span><span class="dot" style="background:var(--green)"></span>正确</span>
-          <span><span class="dot" style="background:var(--amber)"></span>部分正确</span>
-          <span><span class="dot" style="background:var(--red)"></span>错误/存疑</span></div>
+          <div class="legend-note"><span><span class="dot" style="background:var(--success)"></span>正确</span>
+          <span><span class="dot" style="background:var(--warning)"></span>部分正确</span>
+          <span><span class="dot" style="background:var(--danger)"></span>错误/存疑</span></div>
         </div>`;
     }
     wrap.innerHTML = `<div class="filter-bar">${clsSelectHtml("stClsSel", analysisState.clsId)}${stuSel}</div>${body}`;
@@ -872,12 +900,12 @@
               const t = asgTotal(r.asg);
               return t ? +((r.sub.totalScore / t) * 100).toFixed(1) : 0;
             }),
-            borderColor: "#c2372c",
-            backgroundColor: "rgba(194,55,44,0.08)",
+            borderColor: cssVar("--primary"),
+            backgroundColor: alpha(cssVar("--primary"), 0.08),
             fill: true,
             tension: 0.35,
-            pointRadius: 5,
-            pointBackgroundColor: "#c2372c"
+            pointRadius: 4,
+            pointBackgroundColor: cssVar("--primary")
           }]
         },
         options: {
@@ -893,7 +921,7 @@
   function renderQuestionTab(wrap) {
     const asgs = DB.assignments;
     if (!asgs.length) {
-      wrap.innerHTML = `<div class="empty"><div class="big">📊</div>暂无作业</div>`;
+      wrap.innerHTML = emptyHtml("chart", "暂无作业");
       return;
     }
     if (!analysisState.asgId || !findAsg(analysisState.asgId)) analysisState.asgId = asgs[asgs.length - 1].id;
@@ -968,8 +996,8 @@
         data: {
           labels,
           datasets: [
-            { label: "错误 %", data: wrongData, backgroundColor: "rgba(194,55,44,0.75)", stack: "s", borderRadius: 4 },
-            { label: "部分正确 %", data: partialData, backgroundColor: "rgba(185,124,16,0.65)", stack: "s", borderRadius: 4 }
+            { label: "错误 %", data: wrongData, backgroundColor: alpha(cssVar("--danger"), 0.8), stack: "s", borderRadius: 6 },
+            { label: "部分正确 %", data: partialData, backgroundColor: alpha(cssVar("--warning"), 0.6), stack: "s", borderRadius: 6 }
           ]
         },
         options: {
@@ -1001,18 +1029,105 @@
     if (link) openReview(link.dataset.sub);
   });
 
+  // ================== AI 设置 ==================
+  const EFFORT_META = [
+    { v: "low", label: "快速" },
+    { v: "medium", label: "标准" },
+    { v: "high", label: "细致" },
+    { v: "xhigh", label: "极致" }
+  ];
+
+  function renderAiStatus() {
+    const st = $("#aiStatus");
+    st.classList.toggle("on", HEALTH.hasApiKey);
+    st.innerHTML = HEALTH.hasApiKey
+      ? `<span class="status-dot"></span><span class="ai-status-text"><b>AI 批改已就绪</b><span>Claude Opus 5.5</span></span>`
+      : `<span class="status-dot"></span><span class="ai-status-text"><b>未填写 API Key</b><span>点此设置，或先用模拟批改</span></span>`;
+  }
+
+  function openSettings(notice = "") {
+    let effort = HEALTH.effort || "high";
+    const keyPh = HEALTH.hasApiKey
+      ? `已保存 ${HEALTH.keyMasked}${HEALTH.keySource === "env" ? "（来自环境变量）" : ""}，留空则不修改`
+      : "sk-ant-api03-…";
+    openModal(`<h2>AI 设置</h2>
+      <p class="modal-sub">批改模型：<b>Claude Opus 5.5</b> <span class="mono">${esc(HEALTH.model || "claude-opus-5-5")}</span></p>
+      ${notice ? `<div class="notice">${esc(notice)}</div>` : ""}
+      <div class="form-row"><label for="mKey">Anthropic API Key</label>
+        <div class="input-group">
+          <input class="input" id="mKey" type="password" autocomplete="off" spellcheck="false" placeholder="${esc(keyPh)}" />
+          <button class="btn small" id="mKeyEye" type="button">显示</button>
+        </div>
+        <div class="field-hint">在 console.anthropic.com 创建。Key 只保存在本机 data/settings.json，不会写进代码或上传到其他地方。</div>
+      </div>
+      <div class="form-row"><label>批改强度</label>
+        <div class="seg" id="mEffort">${EFFORT_META.map((e) => `<button type="button" data-v="${e.v}" class="${e.v === effort ? "active" : ""}">${e.label}</button>`).join("")}</div>
+        <div class="field-hint">强度越高，辨认潦草字迹、判断等价答案越仔细，但更慢、费用更高。推荐「细致」。</div>
+      </div>
+      <details class="adv" ${HEALTH.baseURL ? "open" : ""}><summary>高级：自定义 API 地址</summary>
+        <input class="input" id="mBase" placeholder="https://api.anthropic.com（默认，留空即可）" value="${esc(HEALTH.baseURL || "")}" />
+      </details>
+      <div class="modal-actions">
+        ${HEALTH.keySource === "web" ? '<button class="btn danger" id="mKeyClear">清除 Key</button><span class="spacer"></span>' : ""}
+        <button class="btn" data-close>取消</button>
+        <button class="btn primary" id="mSetOk">保存并验证</button>
+      </div>`);
+    $("#mKey").focus();
+    $("#mKeyEye").addEventListener("click", (e) => {
+      const show = $("#mKey").type === "password";
+      $("#mKey").type = show ? "text" : "password";
+      e.currentTarget.textContent = show ? "隐藏" : "显示";
+    });
+    $("#mEffort").addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      effort = b.dataset.v;
+      $$("#mEffort button").forEach((x) => x.classList.toggle("active", x === b));
+    });
+    const submit = async (body, okMsg) => {
+      const ok = $("#mSetOk");
+      ok.disabled = true;
+      ok.innerHTML = `<span class="spinner sm light"></span>验证中…`;
+      try {
+        HEALTH = await api("/api/settings", { method: "PUT", body });
+        renderAiStatus(); closeModal(); toast(okMsg);
+      } catch (err) {
+        ok.disabled = false; ok.textContent = "保存并验证";
+        toast(err.message, true);
+      }
+    };
+    $("#mSetOk").addEventListener("click", () =>
+      submit({ apiKey: $("#mKey").value, baseURL: $("#mBase").value, effort }, "设置已保存"));
+    $("#mKey").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#mSetOk").click(); });
+    $("#mKeyClear")?.addEventListener("click", () => {
+      if (confirm("确定清除已保存的 API Key？")) submit({ clearKey: true }, "已清除 API Key");
+    });
+  }
+  $("#aiStatus").addEventListener("click", () => openSettings());
+
+  // ================== 深色模式 ==================
+  const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+  const MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    $("#btnTheme").title = theme === "dark" ? "切换到浅色" : "切换到深色";
+    $("#btnTheme").innerHTML = theme === "dark" ? SUN : MOON;
+  }
+  let savedTheme = null;
+  try { savedTheme = localStorage.getItem("theme"); } catch {}
+  applyTheme(savedTheme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+  $("#btnTheme").addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    applyTheme(next);
+    try { localStorage.setItem("theme", next); } catch {}
+    if ($("#view-analysis").classList.contains("active")) renderAnalysis();
+  });
+
   // ================== 启动 ==================
   (async () => {
     try {
       HEALTH = await api("/api/health");
-      const st = $("#aiStatus");
-      if (HEALTH.hasApiKey) {
-        st.className = "ai-status on";
-        st.innerHTML = `● AI 批改已就绪<br/><span style="opacity:.7">${esc(HEALTH.model)}</span>`;
-      } else {
-        st.className = "ai-status off";
-        st.innerHTML = `○ 未配置 API Key<br/><span style="opacity:.7">仅可使用模拟批改</span>`;
-      }
+      renderAiStatus();
       await reload();
       renderAll();
     } catch (err) {

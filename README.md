@@ -19,32 +19,34 @@
 # 1. 安装依赖（首次）
 npm install
 
-# 2. 配置 API Key（不配置也能用「模拟批改」体验全部流程）
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-
-# 3. 启动
+# 2. 启动
 npm start
 # 打开 http://localhost:3170
 ```
 
+3. **在网页里填 API Key**：点左下角「AI 设置」，粘贴你在 [console.anthropic.com](https://console.anthropic.com) 创建的 Key，点「保存并验证」。验证通过后即可用 **Claude Opus 5.5** 批改作业。不填 Key 也能用「模拟批改」体验全部流程。
+
 > 项目自带一套演示数据（五年级(2)班 + 一次已批改的作业），删除 `data/` 目录即可清空重来。
 
-## 用哪个 AI 模型最好？
+## AI 设置
 
-本项目通过 **Anthropic Claude API** 完成批改，核心要求是：看懂照片里的手写字（视觉识别）+ 判断答案对错（推理）+ 给出标记坐标（定位）。推荐：
-
-| 模型 | 适用场景 |
+| 设置项 | 说明 |
 |---|---|
-| **`claude-opus-4-8`（默认，推荐）** | 视觉识别最强（支持 2576px 高分辨率图像，坐标 1:1 像素级定位），手写体辨认、等价答案判断（如 0.5 = 1/2）最可靠。批改作业首选。 |
-| `claude-sonnet-5` | 质量接近 Opus、成本约为其 60%，作业量大、题目简单（客观题为主）时的高性价比选择。 |
+| API Key | 只保存在本机 `data/settings.json`（已在 `.gitignore` 中），网页上只显示打码后的尾号。保存前会实际连一次 API 校验，填错不会被存下。也可以照旧用环境变量 `ANTHROPIC_API_KEY`，网页里填的优先。 |
+| 批改强度 | 对应 API 的 `effort`：快速 / 标准 / **细致（默认）** / 极致。强度越高，辨认潦草字迹、判断等价答案越仔细，但更慢、费用更高。 |
+| API 地址（高级） | 默认 `https://api.anthropic.com`，一般不用改；需要走公司网关时再填。 |
 
-切换模型只需设置环境变量：
+## 模型
 
-```powershell
-$env:GRADER_MODEL = "claude-sonnet-5"
-```
+批改固定使用 **Claude Opus 5.5**（`claude-opus-5-5`）：看懂照片里的手写字（视觉识别）+ 判断答案对错（推理）+ 给出标记坐标（定位），三件事它都是目前最稳的。
 
-每张作业一次批改约消耗 2000~5000 token（视图片大小和题量），按 Opus 4.8 价格约 ¥0.1~0.4/张。
+- 自适应思考（`thinking: adaptive`），由「批改强度」控制思考深度；
+- 结构化输出（`output_config.format` + JSON Schema），结果 100% 可解析；
+- 开启服务端备用模型（`fallbacks: "default"`）：安全分类器偶尔误拒时，自动换用 Anthropic 推荐的备用模型重试，不用手动重来。
+
+Opus 5.5 价格为输入 $4 / 输出 $20（每百万 token）。每张作业的花费主要取决于思考量，「细致」强度下大致在几毛钱人民币量级；作业量大时可以把强度调到「标准」。
+
+> GitHub Pages 上的是纯前端展示版，没有后端，无法保存数据或调用 AI；真正批改请在本机 `npm start` 运行。
 
 ## 技术架构
 
@@ -53,9 +55,9 @@ $env:GRADER_MODEL = "claude-sonnet-5"
 ├── lib/grader.js      # AI 批改核心：Claude 视觉 API + 结构化输出（JSON Schema）
 ├── public/
 │   ├── index.html     # 单页应用
-│   ├── style.css      # 界面样式（纸张 + 墨色 + 朱红）
+│   ├── style.css      # 界面样式（苹果式简约：单一主题蓝、白底大圆角卡片、支持深色模式）
 │   └── app.js         # 前端逻辑：红笔标注渲染引擎（SVG 显示 / Canvas 导出共用一套绘制基元）、拖拽、图表
-└── data/              # 本地数据（db.json + 上传的作业图片），不上传云端
+└── data/              # 本地数据（db.json + settings.json + 上传的作业图片），不上传云端
 ```
 
 - 批改结果通过 **结构化输出**（`output_config.format` + JSON Schema）保证 100% 可解析；

@@ -5,12 +5,13 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
-import { gradeWithAI, mockGrade, hasApiKey } from "./lib/grader.js";
+import { gradeWithAI, mockGrade, verifyApiKey, describeError, MODEL, EFFORTS } from "./lib/grader.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "data");
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const DB_FILE = path.join(DATA_DIR, "db.json");
+const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // ---------- 极简 JSON 存储 ----------
@@ -24,6 +25,30 @@ if (fs.existsSync(DB_FILE)) {
 }
 const save = () => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 const uid = () => crypto.randomUUID().slice(0, 8);
+
+// ---------- AI 设置（网页里填写的 API Key，仅存本机 data/settings.json） ----------
+let settings = { apiKey: "", baseURL: "", effort: "high" };
+if (fs.existsSync(SETTINGS_FILE)) {
+  try {
+    settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) };
+  } catch {
+    console.warn("settings.json 解析失败，使用默认设置");
+  }
+}
+const saveSettings = () => fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+// 网页填写的 Key 优先，其次是环境变量
+const activeKey = () => settings.apiKey || process.env.ANTHROPIC_API_KEY || "";
+const activeBaseURL = () => settings.baseURL || process.env.ANTHROPIC_BASE_URL || "";
+const hasApiKey = () => Boolean(activeKey());
+const maskKey = (k) => (k ? `${k.slice(0, 7)}••••${k.slice(-4)}` : "");
+const publicSettings = () => ({
+  hasApiKey: hasApiKey(),
+  keySource: settings.apiKey ? "web" : process.env.ANTHROPIC_API_KEY ? "env" : "",
+  keyMasked: maskKey(activeKey()),
+  baseURL: settings.baseURL,
+  effort: settings.effort,
+  model: MODEL
+});
 
 // ---------- 上传 ----------
 const storage = multer.diskStorage({
@@ -50,7 +75,31 @@ app.use("/vendor", express.static(path.join(__dirname, "node_modules/chart.js/di
 
 // ---------- 通用 ----------
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, hasApiKey: hasApiKey(), model: process.env.GRADER_MODEL || "claude-opus-4-8" });
+  res.json({ ok: true, ...publicSettings() });
+});
+
+app.get("/api/settings", (req, res) => res.json(publicSettings()));
+
+app.put("/api/settings", async (req, res) => {
+  const { apiKey, baseURL, effort, clearKey } = req.body || {};
+  const next = { ...settings };
+  if (typeof baseURL === "string") next.baseURL = baseURL.trim().replace(/\/+$/, "");
+  if (EFFORTS.includes(effort)) next.effort = effort;
+  if (clearKey) next.apiKey = "";
+  if (typeof apiKey === "string" && apiKey.trim()) next.apiKey = apiKey.trim();
+  // 换了 Key 或地址时先实际连一次，避免存进去一个用不了的 Key
+  const keyChanged = next.apiKey !== settings.apiKey || next.baseURL !== settings.baseURL;
+  const key = next.apiKey || process.env.ANTHROPIC_API_KEY;
+  if (keyChanged && key) {
+    try {
+      await verifyApiKey({ apiKey: key, baseURL: next.baseURL || process.env.ANTHROPIC_BASE_URL });
+    } catch (err) {
+      return res.status(400).json({ error: describeError(err) });
+    }
+  }
+  settings = next;
+  saveSettings();
+  res.json(publicSettings());
 });
 
 app.get("/api/state", (req, res) => res.json(db));
@@ -242,7 +291,7 @@ app.post("/api/submissions/:id/grade", async (req, res) => {
     } else {
       if (!hasApiKey())
         return res.status(400).json({
-          error: "未配置 ANTHROPIC_API_KEY，无法调用 AI 批改。可先用「模拟批改」体验流程。"
+          error: "还没有填写 API Key，请先在左下角「AI 设置」里填写。也可以先用「模拟批改」体验流程。"
         });
       const imgPath = path.join(UPLOAD_DIR, sub.image);
       const imageBase64 = fs.readFileSync(imgPath).toString("base64");
@@ -250,6 +299,9 @@ app.post("/api/submissions/:id/grade", async (req, res) => {
       const mediaType =
         ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : ext === ".gif" ? "image/gif" : "image/jpeg";
       raw = await gradeWithAI({
+        apiKey: activeKey(),
+        baseURL: activeBaseURL(),
+        effort: settings.effort,
         imageBase64,
         mediaType,
         studentName: stu.name,
@@ -265,7 +317,7 @@ app.post("/api/submissions/:id/grade", async (req, res) => {
     res.json(sub);
   } catch (err) {
     console.error("批改失败:", err);
-    res.status(500).json({ error: `批改失败：${err.message || err}` });
+    res.status(500).json({ error: `批改失败：${describeError(err)}` });
   }
 });
 
@@ -293,5 +345,5 @@ app.put("/api/submissions/:id", (req, res) => {
 const PORT = process.env.PORT || 3170;
 app.listen(PORT, () => {
   console.log(`AI 作业批改系统已启动: http://localhost:${PORT}`);
-  console.log(`AI 批改: ${hasApiKey() ? "已启用 (" + (process.env.GRADER_MODEL || "claude-opus-4-8") + ")" : "未配置 ANTHROPIC_API_KEY，仅可使用模拟批改"}`);
+  console.log(`AI 批改: ${hasApiKey() ? `已启用 (${MODEL})` : "未配置 API Key，可在网页「AI 设置」中填写"}`);
 });
