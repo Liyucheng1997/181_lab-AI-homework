@@ -50,7 +50,7 @@ Opus 5.5 价格为输入 $4 / 输出 $20（每百万 token）。每张作业的�
 
 | | 网页版（GitHub Pages） | 本机版（`npm start`） |
 |---|---|---|
-| 打开方式 | 直接访问 https://liyucheng1997.github.io/ai-homework-grader/ | 本机运行后打开 http://localhost:3170 |
+| 打开方式 | 直接访问 https://liyucheng1997.github.io/181_lab-AI-homework/ | 本机运行后打开 http://localhost:3170 |
 | 数据存在哪 | 当前浏览器（localStorage + IndexedDB），换浏览器/清缓存会丢失 | 本机 `data/` 目录 |
 | AI 批改 | 浏览器直接调用 Claude API | 由本机服务调用 Claude API |
 | API Key | 只存在这个浏览器；可选「不记住」，关掉页面即清除 | 存在本机 `data/settings.json` 或环境变量 |
