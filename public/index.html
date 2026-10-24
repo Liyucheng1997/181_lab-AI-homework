@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>作业帮 · AI 智能批改</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- 纯网页版在浏览器里加载 Claude SDK（构建时打包到 vendor/，见 scripts/build-pages.mjs） -->
+  <script type="importmap">{ "imports": { "@anthropic-ai/sdk": "./vendor/anthropic-sdk.js" } }</script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✍️</text></svg>" />
 </head>
 <body>
@@ -125,7 +127,7 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/vendor/chart.umd.js"></script>
+  <script src="vendor/chart.umd.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

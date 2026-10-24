@@ -9,13 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Assemble (public + chart.js，展示版无后端)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - name: 构建纯网页版（数据存浏览器，AI 批改由浏览器直连 Claude API）
         run: |
-          mkdir -p dist/vendor
-          cp -r public/* dist/
-          npm install chart.js --no-save >/dev/null 2>&1
-          cp node_modules/chart.js/dist/chart.umd.js dist/vendor/
-          sed -i 's#src="/vendor/#src="vendor/#' dist/index.html
+          npm ci
+          npm run build:pages
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
   deploy:

@@ -12,7 +12,19 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
   // ================== API ==================
+  // 本机运行时请求 server.js；部署到 GitHub Pages 等静态托管时没有服务器，改用浏览器内后端（static-backend.js）
+  let backend = null;
   async function api(url, opts = {}) {
+    if (backend) {
+      let body = opts.body, file = null;
+      if (body instanceof FormData) {
+        file = body.get("image");
+        body = Object.fromEntries([...body.entries()].filter(([k]) => k !== "image"));
+      }
+      // 深拷贝返回值，与走 HTTP 时的行为一致（界面改动不会直接写进数据）
+      const data = await backend.handle(opts.method || "GET", url, body, file);
+      return JSON.parse(JSON.stringify(data));
+    }
     const res = await fetch(url, {
       headers: opts.body instanceof FormData ? {} : { "Content-Type": "application/json" },
       ...opts,
@@ -24,6 +36,36 @@
   }
   async function reload() {
     DB = await api("/api/state");
+  }
+  async function detectBackend() {
+    try {
+      const res = await fetch("/api/health");
+      const data = await res.json();
+      if (res.ok && data.ok) return data;
+    } catch {}
+    backend = await import("./static-backend.js");
+    backend.init();
+    return api("/api/health");
+  }
+  async function imageSrc(name) {
+    return backend ? backend.imageUrl(name) : `/uploads/${name}`;
+  }
+
+  // 照片过大时先在浏览器里缩小（长边 ≤ 2576px，Claude 视觉识别的最高分辨率），上传更快、不超 API 图片上限
+  const MAX_EDGE = 2576;
+  async function prepareImage(file) {
+    if (file.type === "image/gif") return file;
+    let bmp;
+    try { bmp = await createImageBitmap(file); } catch { return file; }
+    const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
+    if (scale === 1 && file.size <= 3.5 * 1024 * 1024) { bmp.close(); return file; }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.9));
+    return blob ? new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
   }
 
   // ================== 工具 ==================
@@ -380,8 +422,8 @@
         const fd = new FormData();
         fd.append("assignmentId", asgId);
         fd.append("studentId", stuId);
-        fd.append("image", file);
         try {
+          fd.append("image", await prepareImage(file));
           await api("/api/submissions", { method: "POST", body: fd });
           await reload(); renderGrading(); toast("上传成功，可以开始批改了");
         } catch (err) { toast(err.message, true); }
@@ -434,7 +476,7 @@
     $("#reviewTitle").textContent = `${stu.name} · ${asg.name}（${cls.name}）`;
     const img = $("#reviewImg");
     img.onload = () => { renderMarks(); renderReviewPanel(); };
-    img.src = `/uploads/${sub.image}`;
+    imageSrc(sub.image).then((src) => { img.src = src; });
     $("#reviewOverlay").classList.remove("hidden");
   }
 
@@ -1051,14 +1093,17 @@
       ? `已保存 ${HEALTH.keyMasked}${HEALTH.keySource === "env" ? "（来自环境变量）" : ""}，留空则不修改`
       : "sk-ant-api03-…";
     openModal(`<h2>AI 设置</h2>
-      <p class="modal-sub">批改模型：<b>Claude Opus 5.5</b> <span class="mono">${esc(HEALTH.model || "claude-opus-5-5")}</span></p>
+      <p class="modal-sub">批改模型：<b>Claude Opus 5.5</b> <span class="mono">${esc(HEALTH.model || "claude-opus-5-5")}</span>${HEALTH.mode === "browser" ? " · 网页版（数据保存在本浏览器）" : ""}</p>
       ${notice ? `<div class="notice">${esc(notice)}</div>` : ""}
       <div class="form-row"><label for="mKey">Anthropic API Key</label>
         <div class="input-group">
           <input class="input" id="mKey" type="password" autocomplete="off" spellcheck="false" placeholder="${esc(keyPh)}" />
           <button class="btn small" id="mKeyEye" type="button">显示</button>
         </div>
-        <div class="field-hint">在 console.anthropic.com 创建。Key 只保存在本机 data/settings.json，不会写进代码或上传到其他地方。</div>
+        <div class="field-hint">${HEALTH.mode === "browser"
+          ? "在 console.anthropic.com 创建。网页版直接从本浏览器调用 Claude API，Key 只保存在这个浏览器里，不经过任何其他服务器。建议在控制台给这个 Key 设置用量上限。"
+          : "在 console.anthropic.com 创建。Key 只保存在本机 data/settings.json，不会写进代码或上传到其他地方。"}</div>
+        ${HEALTH.mode === "browser" ? `<label class="check"><input type="checkbox" id="mRemember" ${HEALTH.remember ? "checked" : ""} />在这个浏览器记住 Key（不勾选则关闭页面后需重新填写）</label>` : ""}
       </div>
       <div class="form-row"><label>批改强度</label>
         <div class="seg" id="mEffort">${EFFORT_META.map((e) => `<button type="button" data-v="${e.v}" class="${e.v === effort ? "active" : ""}">${e.label}</button>`).join("")}</div>
@@ -1097,7 +1142,7 @@
       }
     };
     $("#mSetOk").addEventListener("click", () =>
-      submit({ apiKey: $("#mKey").value, baseURL: $("#mBase").value, effort }, "设置已保存"));
+      submit({ apiKey: $("#mKey").value, baseURL: $("#mBase").value, effort, ...($("#mRemember") ? { remember: $("#mRemember").checked } : {}) }, "设置已保存"));
     $("#mKey").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#mSetOk").click(); });
     $("#mKeyClear")?.addEventListener("click", () => {
       if (confirm("确定清除已保存的 API Key？")) submit({ clearKey: true }, "已清除 API Key");
@@ -1126,7 +1171,7 @@
   // ================== 启动 ==================
   (async () => {
     try {
-      HEALTH = await api("/api/health");
+      HEALTH = await detectBackend();
       renderAiStatus();
       await reload();
       renderAll();

@@ -46,14 +46,27 @@ npm start
 
 Opus 5.5 价格为输入 $4 / 输出 $20（每百万 token）。每张作业的花费主要取决于思考量，「细致」强度下大致在几毛钱人民币量级；作业量大时可以把强度调到「标准」。
 
-> GitHub Pages 上的是纯前端展示版，没有后端，无法保存数据或调用 AI；真正批改请在本机 `npm start` 运行。
+## 两种用法
+
+| | 网页版（GitHub Pages） | 本机版（`npm start`） |
+|---|---|---|
+| 打开方式 | 直接访问 https://liyucheng1997.github.io/ai-homework-grader/ | 本机运行后打开 http://localhost:3170 |
+| 数据存在哪 | 当前浏览器（localStorage + IndexedDB），换浏览器/清缓存会丢失 | 本机 `data/` 目录 |
+| AI 批改 | 浏览器直接调用 Claude API | 由本机服务调用 Claude API |
+| API Key | 只存在这个浏览器；可选「不记住」，关掉页面即清除 | 存在本机 `data/settings.json` 或环境变量 |
+
+两种用法共用同一套业务逻辑（`public/shared/`），功能完全一致。网页版的 Key 存在 `liyucheng1997.github.io` 这个域名下，同域名的其他 Pages 页面理论上也能读到，建议在 Anthropic 控制台给这个 Key 设置用量上限。
 
 ## 技术架构
 
 ```
-├── server.js          # Express 服务：班级/作业/提交 API + 静态托管
-├── lib/grader.js      # AI 批改核心：Claude 视觉 API + 结构化输出（JSON Schema）
+├── server.js              # 本机版：Express 服务，数据存文件、照片存磁盘
+├── scripts/build-pages.mjs # 构建网页版到 dist/（含打包给浏览器用的 Claude SDK）
 ├── public/
+│   ├── shared/
+│   │   ├── grader.js      # AI 批改核心：Claude Opus 5.5 视觉 + 结构化输出（Node / 浏览器通用）
+│   │   └── store.js       # 班级/作业/提交/设置的业务逻辑（两种用法共用）
+│   ├── static-backend.js  # 网页版后端：localStorage + IndexedDB，浏览器直连 Claude API
 │   ├── index.html     # 单页应用
 │   ├── style.css      # 界面样式（苹果式简约：单一主题蓝、白底大圆角卡片、支持深色模式）
 │   └── app.js         # 前端逻辑：红笔标注渲染引擎（SVG 显示 / Canvas 导出共用一套绘制基元）、拖拽、图表

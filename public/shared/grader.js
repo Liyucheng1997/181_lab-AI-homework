@@ -1,34 +1,48 @@
 // AI 批改核心：把作业照片 + 标准答案交给 Claude 视觉模型，返回逐题批改结果
-import Anthropic from "@anthropic-ai/sdk";
-
+// 本机服务端（Node）和纯网页版（浏览器）共用这一份代码
 export const MODEL = "claude-opus-5-5";
 export const EFFORTS = ["low", "medium", "high", "xhigh"];
 
+const IN_BROWSER = typeof window !== "undefined";
+
+// SDK 按需加载：Node 从 node_modules 解析，浏览器通过 index.html 的 importmap 指向打包好的 vendor 文件
+let Anthropic = null;
+async function loadSDK() {
+  if (!Anthropic) Anthropic = (await import("@anthropic-ai/sdk")).default;
+  return Anthropic;
+}
+function makeClient(SDK, { apiKey, baseURL }, extra = {}) {
+  // 浏览器直连时 SDK 需要显式同意（Key 由老师自己填写、只发往 Claude API）
+  return new SDK({ apiKey, ...(baseURL ? { baseURL } : {}), ...(IN_BROWSER ? { dangerouslyAllowBrowser: true } : {}), ...extra });
+}
+
 // 按「Key + 地址」缓存客户端，网页里改了 Key 后自动换新
 let cached = { sig: "", client: null };
-function getClient({ apiKey, baseURL }) {
-  const sig = `${apiKey}|${baseURL || ""}`;
-  if (cached.sig !== sig) {
-    cached = { sig, client: new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) }) };
-  }
+async function getClient(opts) {
+  const SDK = await loadSDK();
+  const sig = `${opts.apiKey}|${opts.baseURL || ""}`;
+  if (cached.sig !== sig) cached = { sig, client: makeClient(SDK, opts) };
   return cached.client;
 }
 
 // 校验 Key：查询一次模型信息，不产生 token 费用
-export async function verifyApiKey({ apiKey, baseURL }) {
-  const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}), maxRetries: 0 });
-  await client.models.retrieve(MODEL);
+export async function verifyApiKey(opts) {
+  const SDK = await loadSDK();
+  await makeClient(SDK, opts, { maxRetries: 0 }).models.retrieve(MODEL);
 }
 
 // 把 SDK 的错误翻译成老师看得懂的中文
 export function describeError(err) {
-  if (err instanceof Anthropic.AuthenticationError) return "API Key 无效或已被撤销，请在「AI 设置」里重新填写";
-  if (err instanceof Anthropic.PermissionDeniedError) return "该 API Key 没有调用 Claude Opus 5.5 的权限";
-  if (err instanceof Anthropic.NotFoundError) return "接口地址或模型不可用，请检查「API 地址」设置";
-  if (err instanceof Anthropic.RateLimitError) return "请求太频繁或额度不足，请稍后再试";
-  if (err instanceof Anthropic.BadRequestError) return `请求被拒绝：${err.message}`;
-  if (err instanceof Anthropic.APIConnectionError) return "无法连接到 Claude API，请检查网络或「API 地址」设置";
-  if (err instanceof Anthropic.APIError) return `Claude API 出错（${err.status ?? "未知"}）：${err.message}`;
+  const SDK = Anthropic;
+  if (SDK) {
+    if (err instanceof SDK.AuthenticationError) return "API Key 无效或已被撤销，请在「AI 设置」里重新填写";
+    if (err instanceof SDK.PermissionDeniedError) return "该 API Key 没有调用 Claude Opus 5.5 的权限";
+    if (err instanceof SDK.NotFoundError) return "接口地址或模型不可用，请检查「API 地址」设置";
+    if (err instanceof SDK.RateLimitError) return "请求太频繁或额度不足，请稍后再试";
+    if (err instanceof SDK.BadRequestError) return `请求被拒绝：${err.message}`;
+    if (err instanceof SDK.APIConnectionError) return "无法连接到 Claude API，请检查网络或「API 地址」设置";
+    if (err instanceof SDK.APIError) return `Claude API 出错（${err.status ?? "未知"}）：${err.message}`;
+  }
   return err?.message || String(err);
 }
 
@@ -82,7 +96,8 @@ ${lines}
 }
 
 export async function gradeWithAI({ apiKey, baseURL, effort, imageBase64, mediaType, studentName, questions }) {
-  const stream = getClient({ apiKey, baseURL }).beta.messages.stream({
+  const client = await getClient({ apiKey, baseURL });
+  const stream = client.beta.messages.stream({
     model: MODEL,
     max_tokens: 32000,
     thinking: { type: "adaptive" },
@@ -161,4 +176,30 @@ export function mockGrade({ questions }) {
     questions: results,
     overall_comment: overall[Math.floor(Math.random() * overall.length)]
   };
+}
+
+// 把 AI 返回的结果与题目合并，并裁剪分数
+export function normalizeResults(asg, raw) {
+  return asg.questions.map((q, i) => {
+    const r =
+      raw.questions.find((x) => String(x.no) === String(q.no)) || raw.questions[i] || {};
+    const points = Number(q.points) || 0;
+    let score = Math.min(points, Math.max(0, Number(r.score) || 0));
+    let verdict = ["correct", "wrong", "partial", "unclear"].includes(r.verdict)
+      ? r.verdict
+      : "unclear";
+    if (verdict === "correct") score = points;
+    if (verdict === "wrong" || verdict === "unclear") score = 0;
+    return {
+      no: String(q.no),
+      points,
+      answer: q.answer,
+      studentAnswer: String(r.student_answer || ""),
+      verdict,
+      score,
+      comment: String(r.comment || ""),
+      x: Math.min(1000, Math.max(0, Number(r.x) || 700)),
+      y: Math.min(1000, Math.max(0, Number(r.y) || Math.round(100 + (i * 800) / asg.questions.length)))
+    };
+  });
 }

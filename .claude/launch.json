@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
       "port": 3170
+    },
+    {
+      "name": "pages-static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "3171", "-d", "dist"],
+      "port": 3171
     }
   ]
 }
